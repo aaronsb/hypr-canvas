@@ -1,59 +1,75 @@
 # hypr-canvas
 
-Infinite canvas plugin for Hyprland. Turns the desktop into a pannable, zoomable 2D surface — like Google Maps for your windows.
+An infinite canvas plugin for [Hyprland](https://hyprland.org). Zoom out to see all your windows at once, pan around a vast virtual desktop, and zoom back in to work — like Google Maps for your desktop.
 
-## Status
+## Demo
 
-Not yet started. This project continues work from `../kwin-map/` which prototyped the concept as a KWin effect.
+**Super+Scroll** to zoom in/out. **Super+Left-Drag** on empty space to pan.
+
+Works with both native Wayland apps and XWayland apps (Chrome, Discord, Electron).
+
+## Building
+
+Requires Hyprland v0.54.2 and its development headers.
+
+```bash
+make
+make reload   # copies to /tmp to bypass dlopen cache, then loads
+```
+
+## How It Works
+
+The plugin hooks 12 functions inside Hyprland to intercept rendering, input, coordinate mapping, and popup positioning. No source patches needed — it's a pure plugin using `createFunctionHook`.
+
+### Coordinate Spaces
+
+```
+Physical space: monitor pixels (0,0)-(7680,2160)
+                hardware cursor always lives here
+                                    │
+                          position() hook
+                          offset + physical / zoom
+                                    │
+                                    ▼
+Canvas space:   infinite plane where windows exist
+                at their normal Hyprland positions
+```
+
+**Rendering** transforms canvas → physical: `screenPos = (canvasPos - offset) * zoom`
+
+**Input** transforms physical → canvas: `canvasPos = offset + screenPos / zoom`
+
+### Hook Summary
+
+| Hook | What it does |
+|------|-------------|
+| `onMouseWheel` | Super+scroll → cursor-anchored zoom |
+| `onMouseButton` | Super+left-click on empty desktop → start/stop pan |
+| `onMouseMoved` | Pan drag via raw delta (divided by zoom for canvas-space movement) |
+| `position()` | Core coordinate remap — returns canvas coords to all 16 callers |
+| `closestValid()` | Disables cursor clamping so pointer can reach beyond monitor bounds |
+| `getMonitorFromCursor()` | Returns focused monitor when canvas coords are out of bounds |
+| `getMonitorFromVector()` | Same fallback for position-based lookups (vectorToWindowUnified etc.) |
+| `shouldRenderWindow()` | Forces all windows visible when zoomed out |
+| `CRenderPass::render()` | Expands damage region to full virtual viewport |
+| `renderAllClientsForWorkspace()` | Applies zoom transform via SRenderModifData + clears framebuffer |
+| `applyPositioning()` | Expands popup constraint box so menus aren't clamped to monitor |
+| `waylandToXWaylandCoords()` | Converts canvas→physical for XWayland apps (Chrome, Discord) |
+
+### Why So Many Hooks?
+
+Hyprland wasn't designed for viewport transforms. The compositor assumes cursor position = screen position = window position. Breaking that assumption requires intercepting every layer:
+
+- **Input layer**: the cursor must move 1:1 with the physical mouse, but all coordinate consumers need canvas-space values
+- **Rendering layer**: windows must be offset and scaled, damage regions expanded, render pass simplification disabled
+- **Protocol layer**: XWayland apps use absolute X11 coordinates mapped through a separate transform — needs its own hook
+- **UI layer**: popup menus (xdg_positioner) are constrained to the monitor — needs expanded bounds
 
 ## Prior Work
 
-### kwin-map (KWin effect prototype)
+- **kwin-map**: KWin effect prototype that proved the concept. Hit API limits with input routing.
+- **driftwm**: Existing infinite canvas compositor in Rust/smithay. Can't drive ultrawide at native res (no DSC). The coordinate math patterns from driftwm informed our approach.
 
-Proved the concept works. Key outcomes:
+## License
 
-- **Zoom/pan with cursor anchoring** — Math works, feels natural. Meta+Scroll to zoom, Meta+drag to pan.
-- **Per-window transforms** — `dx = wPos*(zoom-1) - offset*zoom`, `dy` same. KWin applies scale-then-translate, with window position as a separate matrix multiply.
-- **Found and patched KWin renderer bug** — `Region::infinite()` was being silently clipped to output bounds in `itemrenderer_opengl.cpp`. One-line fix. Patch at `../kwin-build/fix-infinite-clip.patch`.
-- **Designed input transform API** — `Effect::inputTransform(pos)` virtual method for remapping input coordinates through effects. Patch at `../kwin-build/fix-input-transform.patch`.
-- **settleWindows()** — At zoom=1.0, physically move all windows by -offset so real positions match screen positions and input routing works.
-- **Desktop wallpaper scrolling** — Track accumulated pan offset, apply as visual transform to desktop window.
-
-### driftwm (existing infinite canvas compositor)
-
-Discovered `malbiruk/driftwm` — a Rust/smithay compositor implementing the same concept. Forked to `../driftwm/`. Issues found:
-
-- Can't drive 7680x2160@120Hz (missing DSC support in smithay)
-- No HDR support (smithay HDR is still a draft PR)
-- Color mapping broken when display was left in HDR mode by KDE
-- "Primarily built with AI" — rendering quality is rough
-
-### Why Hyprland
-
-- **Mature DRM/KMS backend** — handles DSC, 10-bit, HDR metadata, weird monitors
-- **C++ plugin API** — hooks into rendering and input pipelines
-- **Large community** — 34.6k stars, 609 contributors, active development
-- **We already know C++ compositor plugins** — KWin work transfers directly
-
-## Architecture
-
-The plugin needs to:
-
-1. **Hook the rendering pipeline** — apply zoom/pan transforms to all windows
-2. **Hook the input pipeline** — remap screen coordinates to canvas coordinates
-3. **Manage viewport state** — zoom level, offset, animation
-4. **Handle gestures** — Meta+Scroll zoom, Meta+drag pan, edge panning
-
-## Key Files from kwin-map
-
-| File | What to reference |
-|------|-------------------|
-| `../kwin-map/mapeffect.cpp` | Transform math, zoom anchoring, pan logic, settleWindows |
-| `../kwin-map/DESIGN.md` | Canvas model, home space concept, coordinate system |
-| `../kwin-map/BUGS.md` | KWin upstream issues (some may apply to Hyprland too) |
-| `../kwin-build/fix-infinite-clip.patch` | Renderer clipping fix (check if Hyprland has same issue) |
-| `../kwin-build/fix-input-transform.patch` | Input remap API design |
-
-## Display
-
-Samsung Odyssey G95NC — 7680x2160@120Hz, HDR, 10-bit capable. This is the target hardware.
+MIT
