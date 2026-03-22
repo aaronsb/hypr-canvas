@@ -182,6 +182,9 @@ static void hkRenderAllClientsForWorkspace(CHyprRenderer* self, PHLMONITOR pMoni
     if (g_pCanvas && g_pCanvas->isTransformed()) {
         g_pHyprRenderer->damageMonitor(pMonitor);
 
+        // Clear the full framebuffer so areas outside the wallpaper don't show stale pixels
+        g_pHyprOpenGL->clear(CHyprColor(0.1, 0.1, 0.1, 1.0));
+
         // Disable render pass simplification and expand damage/clip to full virtual viewport
         const auto monSize = pMonitor->m_transformedSize;
         CBox virtualViewport = {
