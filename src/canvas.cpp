@@ -36,7 +36,8 @@ using PHLMONITOR   = SP<CMonitor>;
 using PHLWORKSPACE = SP<CWorkspace>;
 using PHLWINDOW    = SP<Desktop::View::CWindow>;
 using steady_tp    = std::chrono::steady_clock::time_point;
-typedef Vector2D (*getMouseCoordsFn)(CInputManager*);
+typedef Vector2D (*positionFn)(CPointerManager*);
+typedef PHLMONITOR (*getMonitorFromCursorFn)(CCompositor*);
 
 // --- Scroll/zoom hook ---
 
@@ -55,8 +56,8 @@ static void hkOnMouseWheel(CInputManager* self, IPointer::SAxisEvent e, SP<IPoin
                 newZoom /= CCanvas::ZOOM_STEP;
 
             // Get raw screen coords (bypass our canvas-space hook)
-            auto rawCoords = (getMouseCoordsFn)g_pCanvas->m_pointerPosHook->m_original;
-            const auto cursorScreen = rawCoords(g_pInputManager.get());
+            auto rawPos = (positionFn)g_pCanvas->m_positionHook->m_original;
+            const auto cursorScreen = rawPos(g_pPointerManager.get());
             g_pCanvas->applyZoom(newZoom, cursorScreen);
 
             logf("[hypr-canvas] zoom=%.3f offset=(%.1f, %.1f)\n",
@@ -123,17 +124,30 @@ static void hkOnMouseMoved(CInputManager* self, IPointer::SMotionEvent e) {
 
 
 // --- Cursor coordinate hook ---
-// position() is inlined (0 call sites), but getMouseCoordsInternal has 37 callers
-// including mouseMoveUnified which sends Wayland pointer events
+// position() has 16 call sites including mouseMoveUnified (window finding + surface-local coords)
 
-static Vector2D hkGetMouseCoordsInternal(CInputManager* self) {
-    auto original = (getMouseCoordsFn)g_pCanvas->m_pointerPosHook->m_original;
+static Vector2D hkPosition(CPointerManager* self) {
+    auto original = (positionFn)g_pCanvas->m_positionHook->m_original;
     Vector2D raw = original(self);
 
     if (g_pCanvas && g_pCanvas->isTransformed() && !g_pCanvas->m_panning) {
         return g_pCanvas->screenToCanvas(raw);
     }
     return raw;
+}
+
+// --- Monitor detection hook ---
+// getMonitorFromCursor uses position() which now returns canvas coords.
+// Canvas coords may be outside all monitors, so we bypass and use physical coords.
+
+static PHLMONITOR hkGetMonitorFromCursor(CCompositor* self) {
+    if (g_pCanvas && g_pCanvas->isTransformed()) {
+        // Just return the focused monitor — cursor is always physically on it
+        return Desktop::focusState()->monitor();
+    }
+
+    auto original = (getMonitorFromCursorFn)g_pCanvas->m_monitorFromCursorHook->m_original;
+    return original(self);
 }
 
 // --- Visibility hook ---
@@ -225,7 +239,19 @@ CCanvas::CCanvas() {
     m_mouseWheelHook  = hookByName("onMouseWheel", (void*)&hkOnMouseWheel);
     m_mouseButtonHook = hookByName("onMouseButton", (void*)&hkOnMouseButton);
     m_mouseMovedHook  = hookByName("onMouseMoved", (void*)&hkOnMouseMoved);
-    m_pointerPosHook = hookByName("getMouseCoordsInternal", (void*)&hkGetMouseCoordsInternal);
+    // Hook position() — 16 call sites including mouseMoveUnified for window finding + surface-local
+    {
+        auto fns = HyprlandAPI::findFunctionsByName(PHANDLE, std::string("position"));
+        for (auto& fn : fns) {
+            if (fn.demangled.find("CPointerManager") != std::string::npos) {
+                logf("[hypr-canvas] found CPointerManager::position() @ %p\n", fn.address);
+                m_positionHook = HyprlandAPI::createFunctionHook(PHANDLE, fn.address, (void*)&hkPosition);
+                if (m_positionHook) m_positionHook->hook();
+                break;
+            }
+        }
+    }
+    m_monitorFromCursorHook = hookByName("getMonitorFromCursor", (void*)&hkGetMonitorFromCursor);
     // Hook shouldRenderWindow to disable culling when zoomed out
     {
         auto fns = HyprlandAPI::findFunctionsByName(PHANDLE, std::string("shouldRenderWindow"));
@@ -262,8 +288,10 @@ CCanvas::~CCanvas() {
         HyprlandAPI::removeFunctionHook(PHANDLE, m_mouseButtonHook);
     if (m_mouseMovedHook)
         HyprlandAPI::removeFunctionHook(PHANDLE, m_mouseMovedHook);
-    if (m_pointerPosHook)
-        HyprlandAPI::removeFunctionHook(PHANDLE, m_pointerPosHook);
+    if (m_positionHook)
+        HyprlandAPI::removeFunctionHook(PHANDLE, m_positionHook);
+    if (m_monitorFromCursorHook)
+        HyprlandAPI::removeFunctionHook(PHANDLE, m_monitorFromCursorHook);
     if (m_shouldRenderHook)
         HyprlandAPI::removeFunctionHook(PHANDLE, m_shouldRenderHook);
     if (m_renderPassHook)

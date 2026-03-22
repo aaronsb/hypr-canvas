@@ -32,13 +32,14 @@ class CCanvas {
     bool m_panning = false;
 
     // Function hooks (public for hook fn access)
-    CFunctionHook* m_mouseWheelHook  = nullptr;
-    CFunctionHook* m_mouseButtonHook = nullptr;
-    CFunctionHook* m_mouseMovedHook  = nullptr;
-    CFunctionHook* m_pointerPosHook  = nullptr;
-    CFunctionHook* m_shouldRenderHook = nullptr;
-    CFunctionHook* m_renderPassHook   = nullptr;
-    CFunctionHook* m_renderHook       = nullptr;
+    CFunctionHook* m_mouseWheelHook        = nullptr;
+    CFunctionHook* m_mouseButtonHook       = nullptr;
+    CFunctionHook* m_mouseMovedHook        = nullptr;
+    CFunctionHook* m_positionHook          = nullptr;
+    CFunctionHook* m_monitorFromCursorHook = nullptr;
+    CFunctionHook* m_shouldRenderHook      = nullptr;
+    CFunctionHook* m_renderPassHook        = nullptr;
+    CFunctionHook* m_renderHook            = nullptr;
 };
 
 inline std::unique_ptr<CCanvas> g_pCanvas;
