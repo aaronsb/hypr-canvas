@@ -36,7 +36,7 @@ using PHLMONITOR   = SP<CMonitor>;
 using PHLWORKSPACE = SP<CWorkspace>;
 using PHLWINDOW    = SP<Desktop::View::CWindow>;
 using steady_tp    = std::chrono::steady_clock::time_point;
-typedef Vector2D (*pointerPositionFn)(CPointerManager*);
+typedef Vector2D (*getMouseCoordsFn)(CInputManager*);
 
 // --- Scroll/zoom hook ---
 
@@ -55,8 +55,8 @@ static void hkOnMouseWheel(CInputManager* self, IPointer::SAxisEvent e, SP<IPoin
                 newZoom /= CCanvas::ZOOM_STEP;
 
             // Get raw screen coords (bypass our canvas-space hook)
-            auto rawPos = (pointerPositionFn)g_pCanvas->m_pointerPosHook->m_original;
-            const auto cursorScreen = rawPos(g_pPointerManager.get());
+            auto rawCoords = (getMouseCoordsFn)g_pCanvas->m_pointerPosHook->m_original;
+            const auto cursorScreen = rawCoords(g_pInputManager.get());
             g_pCanvas->applyZoom(newZoom, cursorScreen);
 
             logf("[hypr-canvas] zoom=%.3f offset=(%.1f, %.1f)\n",
@@ -110,7 +110,6 @@ typedef void (*onMouseMovedFn)(CInputManager*, IPointer::SMotionEvent);
 
 static void hkOnMouseMoved(CInputManager* self, IPointer::SMotionEvent e) {
     if (g_pCanvas && g_pCanvas->m_panning) {
-        // Panning: move viewport by raw delta in canvas units
         g_pCanvas->offset.x -= e.delta.x / g_pCanvas->zoom;
         g_pCanvas->offset.y -= e.delta.y / g_pCanvas->zoom;
         scheduleFrame();
@@ -121,10 +120,14 @@ static void hkOnMouseMoved(CInputManager* self, IPointer::SMotionEvent e) {
     original(self, e);
 }
 
-// --- Pointer position hook ---
 
-static Vector2D hkPointerPosition(CPointerManager* self) {
-    auto original = (pointerPositionFn)g_pCanvas->m_pointerPosHook->m_original;
+
+// --- Cursor coordinate hook ---
+// position() is inlined (0 call sites), but getMouseCoordsInternal has 37 callers
+// including mouseMoveUnified which sends Wayland pointer events
+
+static Vector2D hkGetMouseCoordsInternal(CInputManager* self) {
+    auto original = (getMouseCoordsFn)g_pCanvas->m_pointerPosHook->m_original;
     Vector2D raw = original(self);
 
     if (g_pCanvas && g_pCanvas->isTransformed() && !g_pCanvas->m_panning) {
@@ -222,18 +225,7 @@ CCanvas::CCanvas() {
     m_mouseWheelHook  = hookByName("onMouseWheel", (void*)&hkOnMouseWheel);
     m_mouseButtonHook = hookByName("onMouseButton", (void*)&hkOnMouseButton);
     m_mouseMovedHook  = hookByName("onMouseMoved", (void*)&hkOnMouseMoved);
-    // Hook CPointerManager::position specifically
-    {
-        auto fns = HyprlandAPI::findFunctionsByName(PHANDLE, std::string("position"));
-        for (auto& fn : fns) {
-            if (fn.demangled.find("CPointerManager") != std::string::npos) {
-                logf("[hypr-canvas] found CPointerManager::position @ %p\n", fn.address);
-                m_pointerPosHook = HyprlandAPI::createFunctionHook(PHANDLE, fn.address, (void*)&hkPointerPosition);
-                if (m_pointerPosHook) m_pointerPosHook->hook();
-                break;
-            }
-        }
-    }
+    m_pointerPosHook = hookByName("getMouseCoordsInternal", (void*)&hkGetMouseCoordsInternal);
     // Hook shouldRenderWindow to disable culling when zoomed out
     {
         auto fns = HyprlandAPI::findFunctionsByName(PHANDLE, std::string("shouldRenderWindow"));

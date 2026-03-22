@@ -35,7 +35,7 @@ class CCanvas {
     CFunctionHook* m_mouseWheelHook  = nullptr;
     CFunctionHook* m_mouseButtonHook = nullptr;
     CFunctionHook* m_mouseMovedHook  = nullptr;
-    CFunctionHook* m_pointerPosHook    = nullptr;
+    CFunctionHook* m_pointerPosHook  = nullptr;
     CFunctionHook* m_shouldRenderHook = nullptr;
     CFunctionHook* m_renderPassHook   = nullptr;
     CFunctionHook* m_renderHook       = nullptr;
