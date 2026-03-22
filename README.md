@@ -2,6 +2,8 @@
 
 An infinite canvas plugin for [Hyprland](https://hyprland.org). Zoom out to see all your windows at once, pan around a vast virtual desktop, and zoom back in to work — like Google Maps for your desktop.
 
+> **⚠️ Super alpha.** This plugin hooks deep into Hyprland's internals. It may set your computer on fire, cause a divide by zero when maximizing an application, and form a black hole ending our universe. ABI-locked to Hyprland v0.54.2. You have been warned.
+
 ## Demo
 
 **Super+Scroll** to zoom in/out. **Super+Left-Drag** on empty space to pan.
