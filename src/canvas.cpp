@@ -137,6 +137,21 @@ static Vector2D hkPosition(CPointerManager* self) {
     return raw;
 }
 
+// --- Pointer clamping hook ---
+// closestValid() clamps m_pointerPos to monitor layout, preventing the cursor
+// from reaching canvas positions outside the physical monitor. When zoomed,
+// disable clamping so m_pointerPos can hold any canvas-space position.
+
+typedef Vector2D (*closestValidFn)(CPointerManager*, const Vector2D&);
+
+static Vector2D hkClosestValid(CPointerManager* self, const Vector2D& pos) {
+    if (g_pCanvas && g_pCanvas->isTransformed())
+        return pos;
+
+    auto original = (closestValidFn)g_pCanvas->m_closestValidHook->m_original;
+    return original(self, pos);
+}
+
 // --- Monitor detection hook ---
 // getMonitorFromCursor uses position() which now returns canvas coords.
 // Canvas coords may be outside all monitors, so we bypass and use physical coords.
@@ -223,6 +238,25 @@ static void hkRenderAllClientsForWorkspace(CHyprRenderer* self, PHLMONITOR pMoni
     }
 }
 
+// --- Monitor-from-vector hook ---
+// getMonitorFromVector is used by vectorToWindowUnified and many others.
+// Canvas coords outside the physical monitor return null, blocking window lookup.
+
+typedef PHLMONITOR (*getMonitorFromVectorFn)(CCompositor*, const Vector2D&);
+
+static PHLMONITOR hkGetMonitorFromVector(CCompositor* self, const Vector2D& pos) {
+    auto original = (getMonitorFromVectorFn)g_pCanvas->m_monitorFromVectorHook->m_original;
+
+    if (g_pCanvas && g_pCanvas->isTransformed()) {
+        auto result = original(self, pos);
+        if (!result)
+            return Desktop::focusState()->monitor();
+        return result;
+    }
+
+    return original(self, pos);
+}
+
 // --- Popup positioning hook ---
 // When zoomed, expand the constraint box so popups aren't clamped to the physical monitor
 
@@ -270,7 +304,9 @@ CCanvas::CCanvas() {
             }
         }
     }
+    m_closestValidHook      = hookByName("closestValid", (void*)&hkClosestValid);
     m_monitorFromCursorHook = hookByName("getMonitorFromCursor", (void*)&hkGetMonitorFromCursor);
+    m_monitorFromVectorHook = hookByName("getMonitorFromVector", (void*)&hkGetMonitorFromVector);
     m_popupPositionHook     = hookByName("applyPositioning", (void*)&hkApplyPositioning);
     // Hook shouldRenderWindow to disable culling when zoomed out
     {
@@ -310,8 +346,12 @@ CCanvas::~CCanvas() {
         HyprlandAPI::removeFunctionHook(PHANDLE, m_mouseMovedHook);
     if (m_positionHook)
         HyprlandAPI::removeFunctionHook(PHANDLE, m_positionHook);
+    if (m_closestValidHook)
+        HyprlandAPI::removeFunctionHook(PHANDLE, m_closestValidHook);
     if (m_monitorFromCursorHook)
         HyprlandAPI::removeFunctionHook(PHANDLE, m_monitorFromCursorHook);
+    if (m_monitorFromVectorHook)
+        HyprlandAPI::removeFunctionHook(PHANDLE, m_monitorFromVectorHook);
     if (m_popupPositionHook)
         HyprlandAPI::removeFunctionHook(PHANDLE, m_popupPositionHook);
     if (m_shouldRenderHook)

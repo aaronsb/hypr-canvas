@@ -36,7 +36,9 @@ class CCanvas {
     CFunctionHook* m_mouseButtonHook       = nullptr;
     CFunctionHook* m_mouseMovedHook        = nullptr;
     CFunctionHook* m_positionHook          = nullptr;
-    CFunctionHook* m_monitorFromCursorHook = nullptr;
+    CFunctionHook* m_closestValidHook     = nullptr;
+    CFunctionHook* m_monitorFromCursorHook  = nullptr;
+    CFunctionHook* m_monitorFromVectorHook  = nullptr;
     CFunctionHook* m_popupPositionHook      = nullptr;
     CFunctionHook* m_shouldRenderHook      = nullptr;
     CFunctionHook* m_renderPassHook        = nullptr;
