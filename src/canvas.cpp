@@ -4,6 +4,7 @@
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/managers/PointerManager.hpp>
+#include <hyprland/src/protocols/XDGShell.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
 
@@ -222,6 +223,24 @@ static void hkRenderAllClientsForWorkspace(CHyprRenderer* self, PHLMONITOR pMoni
     }
 }
 
+// --- Popup positioning hook ---
+// When zoomed, expand the constraint box so popups aren't clamped to the physical monitor
+
+typedef void (*applyPositioningFn)(CXDGPopupResource*, const CBox&, const Vector2D&);
+
+static void hkApplyPositioning(CXDGPopupResource* self, const CBox& availableBox, const Vector2D& t1coord) {
+    auto original = (applyPositioningFn)g_pCanvas->m_popupPositionHook->m_original;
+
+    if (g_pCanvas && g_pCanvas->isTransformed()) {
+        // Use a very large constraint box so popups aren't clamped
+        CBox expanded = {-100000, -100000, 200000, 200000};
+        original(self, expanded, t1coord);
+        return;
+    }
+
+    original(self, availableBox, t1coord);
+}
+
 // --- Constructor / Destructor ---
 
 static CFunctionHook* hookByName(const std::string& name, void* dest) {
@@ -252,6 +271,7 @@ CCanvas::CCanvas() {
         }
     }
     m_monitorFromCursorHook = hookByName("getMonitorFromCursor", (void*)&hkGetMonitorFromCursor);
+    m_popupPositionHook     = hookByName("applyPositioning", (void*)&hkApplyPositioning);
     // Hook shouldRenderWindow to disable culling when zoomed out
     {
         auto fns = HyprlandAPI::findFunctionsByName(PHANDLE, std::string("shouldRenderWindow"));
@@ -292,6 +312,8 @@ CCanvas::~CCanvas() {
         HyprlandAPI::removeFunctionHook(PHANDLE, m_positionHook);
     if (m_monitorFromCursorHook)
         HyprlandAPI::removeFunctionHook(PHANDLE, m_monitorFromCursorHook);
+    if (m_popupPositionHook)
+        HyprlandAPI::removeFunctionHook(PHANDLE, m_popupPositionHook);
     if (m_shouldRenderHook)
         HyprlandAPI::removeFunctionHook(PHANDLE, m_shouldRenderHook);
     if (m_renderPassHook)
