@@ -1,9 +1,10 @@
 #pragma once
 
-#include <hyprland/src/event/EventBus.hpp>
 #include <hyprland/src/plugins/PluginAPI.hpp>
+#include <hyprland/src/plugins/HookSystem.hpp>
 #include <hyprland/src/helpers/math/Math.hpp>
-#include <hyprutils/signal/Signal.hpp>
+#include <hyprland/src/devices/IPointer.hpp>
+#include <hyprutils/memory/SharedPtr.hpp>
 
 class CCanvas {
   public:
@@ -22,21 +23,22 @@ class CCanvas {
     // Apply zoom with cursor anchoring
     void applyZoom(double newZoom, const Vector2D& anchorScreen);
 
-  private:
-    // Event listeners — must stay alive to keep hooks registered
-    CHyprSignalListener m_renderStageListener;
-    CHyprSignalListener m_mouseAxisListener;
-
-    // Render hooks
-    void onRenderStage(eRenderStage stage);
-
-    // Input hooks
-    void onMouseAxis(IPointer::SAxisEvent e, Event::SCallbackInfo& info);
-
     // Constants
     static constexpr double ZOOM_MIN  = 0.05;
     static constexpr double ZOOM_MAX  = 1.0;
     static constexpr double ZOOM_STEP = 1.15;
+
+    // Panning state
+    bool m_panning = false;
+
+    // Function hooks (public for hook fn access)
+    CFunctionHook* m_mouseWheelHook  = nullptr;
+    CFunctionHook* m_mouseButtonHook = nullptr;
+    CFunctionHook* m_mouseMovedHook  = nullptr;
+    CFunctionHook* m_pointerPosHook    = nullptr;
+    CFunctionHook* m_shouldRenderHook = nullptr;
+    CFunctionHook* m_renderPassHook   = nullptr;
+    CFunctionHook* m_renderHook       = nullptr;
 };
 
 inline std::unique_ptr<CCanvas> g_pCanvas;

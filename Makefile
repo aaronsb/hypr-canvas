@@ -21,7 +21,9 @@ unload:
 
 reload: $(OUT)
 	-hyprctl plugin unload $(PWD)/$(OUT)
-	hyprctl plugin load $(PWD)/$(OUT)
+	-hyprctl plugin unload /tmp/$(PLUGIN_NAME)-live.so
+	cp $(PWD)/$(OUT) /tmp/$(PLUGIN_NAME)-live.so
+	hyprctl plugin load /tmp/$(PLUGIN_NAME)-live.so
 
 clean:
 	rm -f $(OUT)
