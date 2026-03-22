@@ -43,6 +43,7 @@ class CCanvas {
     CFunctionHook* m_shouldRenderHook      = nullptr;
     CFunctionHook* m_renderPassHook        = nullptr;
     CFunctionHook* m_renderHook            = nullptr;
+    CFunctionHook* m_waylandToXWCoordHook  = nullptr;
 };
 
 inline std::unique_ptr<CCanvas> g_pCanvas;

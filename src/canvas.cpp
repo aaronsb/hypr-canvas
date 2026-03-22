@@ -4,6 +4,7 @@
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/managers/PointerManager.hpp>
+#include <hyprland/src/managers/XWaylandManager.hpp>
 #include <hyprland/src/protocols/XDGShell.hpp>
 #include <hyprland/src/render/Renderer.hpp>
 #include <hyprland/src/render/OpenGL.hpp>
@@ -275,6 +276,25 @@ static void hkApplyPositioning(CXDGPopupResource* self, const CBox& availableBox
     original(self, availableBox, t1coord);
 }
 
+// --- XWayland coordinate hook ---
+// XWayland apps use absolute X11 coords. waylandToXWaylandCoords maps via
+// monitor positions. Canvas coords outside the monitor produce wrong mapping.
+// Fix: convert canvas→physical before the mapping, so XWayland sees physical coords.
+
+typedef Vector2D (*waylandToXWCoordFn)(CHyprXWaylandManager*, const Vector2D&);
+
+static Vector2D hkWaylandToXWaylandCoords(CHyprXWaylandManager* self, const Vector2D& coord) {
+    auto original = (waylandToXWCoordFn)g_pCanvas->m_waylandToXWCoordHook->m_original;
+
+    if (g_pCanvas && g_pCanvas->isTransformed()) {
+        // coord is in canvas space — convert back to physical for XWayland mapping
+        Vector2D physical = g_pCanvas->canvasToScreen(coord);
+        return original(self, physical);
+    }
+
+    return original(self, coord);
+}
+
 // --- Constructor / Destructor ---
 
 static CFunctionHook* hookByName(const std::string& name, void* dest) {
@@ -334,6 +354,7 @@ CCanvas::CCanvas() {
         }
     }
     m_renderHook      = hookByName("renderAllClientsForWorkspace", (void*)&hkRenderAllClientsForWorkspace);
+    m_waylandToXWCoordHook = hookByName("waylandToXWaylandCoords", (void*)&hkWaylandToXWaylandCoords);
     logf("[hypr-canvas] initialized\n");
 }
 
@@ -360,6 +381,8 @@ CCanvas::~CCanvas() {
         HyprlandAPI::removeFunctionHook(PHANDLE, m_renderPassHook);
     if (m_renderHook)
         HyprlandAPI::removeFunctionHook(PHANDLE, m_renderHook);
+    if (m_waylandToXWCoordHook)
+        HyprlandAPI::removeFunctionHook(PHANDLE, m_waylandToXWCoordHook);
 }
 
 // --- Coordinate transforms ---
