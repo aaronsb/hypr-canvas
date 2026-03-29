@@ -2,7 +2,7 @@
 
 An infinite canvas plugin for [Hyprland](https://hyprland.org). Zoom out to see all your windows at once, pan around a vast virtual desktop, and zoom back in to work — like Google Maps for your desktop.
 
-> **⚠️ Super alpha.** This plugin hooks deep into Hyprland's internals. It may set your computer on fire, cause a divide by zero when maximizing an application, and form a black hole ending our universe. ABI-locked to Hyprland v0.54.2. You have been warned.
+> **⚠️ Super alpha.** This plugin hooks deep into Hyprland's internals. It may set your computer on fire, cause a divide by zero when maximizing an application, and form a black hole ending our universe. You have been warned.
 
 ## Demo
 
@@ -10,13 +10,31 @@ An infinite canvas plugin for [Hyprland](https://hyprland.org). Zoom out to see 
 
 Works with both native Wayland apps and XWayland apps (Chrome, Discord, Electron).
 
-## Building
+## Install
 
-Requires Hyprland v0.54.2 and its development headers.
+Requires Hyprland and its development headers. The plugin builds against whatever version you have installed — the ABI version is pulled from your headers at compile time.
 
 ```bash
+# build
 make
-make reload   # copies to /tmp to bypass dlopen cache, then loads
+
+# load into your running Hyprland session
+make install
+
+# or if you're iterating (bypasses dlopen cache)
+make reload
+```
+
+To load it automatically, add to your `hyprland.conf`:
+
+```
+plugin = /path/to/hypr-canvas.so
+```
+
+To unload:
+
+```bash
+make unload
 ```
 
 ## How It Works
